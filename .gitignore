@@ -1,0 +1,16 @@
+# build output
+/dist/
+/refs/
+/bin/
+/obj/
+
+# csc pdb
+*.pdb
+*.dll.config
+
+# local log
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
