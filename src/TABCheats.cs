@@ -98,9 +98,12 @@ namespace TABCheats
         [ConfigOption("全图 热键", ConfigOptionType.KeyBinding, Category = "热键", Order = 32)]
         public string ShowFullMapKey { get; set; }
 
+        [ConfigOption("全局生效/失效 热键", ConfigOptionType.KeyBinding, Category = "热键", Order = 33)]
+        public string MasterKey { get; set; }
+
         public TABCheatsConfig()
         {
-            EnableCheats = true;
+            EnableCheats = false;
             InfiniteGold = true;
             InfiniteResources = true;
             InfiniteFood = true;
@@ -128,6 +131,7 @@ namespace TABCheats
             SpeedKey = "F11";
             ShowFullMapKey = "F12";
             DestroyKey = "Delete";
+            MasterKey = "Home";
         }
     }
 
@@ -290,7 +294,14 @@ namespace TABCheats
 
         public static void OnKeyUpPostfix(DXVision.DXKeys key)
         {
-            if (ModEntry.Cfg == null || !ModEntry.Cfg.EnableCheats) return;
+            if (ModEntry.Cfg == null) return;
+            if (KeyEq(ModEntry.Cfg.MasterKey, key))
+            {
+                ModEntry.Cfg.EnableCheats = !ModEntry.Cfg.EnableCheats;
+                try { ModEntry.Cfg.Save(); } catch (Exception) { }
+                return;
+            }
+            if (!ModEntry.Cfg.EnableCheats) return;
             if (KeyEq(ModEntry.Cfg.GoldKey, key)) ModEntry.Cfg.InfiniteGold = !ModEntry.Cfg.InfiniteGold;
             if (KeyEq(ModEntry.Cfg.ResourcesKey, key)) ModEntry.Cfg.InfiniteResources = !ModEntry.Cfg.InfiniteResources;
             if (KeyEq(ModEntry.Cfg.FoodKey, key)) ModEntry.Cfg.InfiniteFood = !ModEntry.Cfg.InfiniteFood;

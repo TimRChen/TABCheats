@@ -1,5 +1,5 @@
 {
-  "EnableCheats": true,
+  "EnableCheats": false,
   "InfiniteGold": true,
   "InfiniteResources": true,
   "InfiniteFood": true,
@@ -26,5 +26,6 @@
   "ResearchKey": "F1",
   "GodModeKey": "F10",
   "SpeedKey": "F11",
-  "ShowFullMapKey": "F12"
+  "ShowFullMapKey": "F12",
+  "MasterKey": "Home"
 }

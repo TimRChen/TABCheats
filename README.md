@@ -16,7 +16,7 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 
 | 功能 | 默认热键 | 说明 |
 |---|---|---|
-| 启用 TABCheats 总开关 | — | 勾选后全部作弊生效；取消即关闭 |
+| 全局生效/失效（总开关） | Home | 一键开启/关闭全部作弊（默认关闭） |
 | 无限金币 | F9 | 金币显示/使用恒为极大值 |
 | 无限资源（木/石/铁/油） | F8 | 四种资源恒为极大值 |
 | 无限食物 | F7 | 剩余食物恒为极大值 |
@@ -31,7 +31,7 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 | 全图显示 | F12 | 迷雾全开 |
 | 摧毁选中单位 | Delete | 对当前选中单位造成致命伤害 |
 
-所有热键与默认开关均可通过游戏内选项页或 Mods/Configs/TABCheats.json 修改。
+所有热键与默认开关均可通过游戏内选项页或 Mods/Configs/TABCheats.json 修改。**默认 EnableCheats=false，TABCheats 不会自动生效**；按 Home（或勾选项里的“启用 TABCheats 作弊总开关”）才会整体开启。
 
 ---
 
@@ -76,7 +76,7 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 示例（可在游戏选项页改，也会写回此文件）：
 
     {
-      "EnableCheats": true,
+      "EnableCheats": false,
       "InfiniteGold": true,
       "InfiniteResources": true,
       "InfiniteFood": true,
@@ -103,7 +103,8 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
       "GodModeKey": "F10",
       "SpeedKey": "F11",
       "ShowFullMapKey": "F12",
-      "DestroyKey": "Delete"
+      "DestroyKey": "Delete",
+      "MasterKey": "Home"
     }
 
 ---
