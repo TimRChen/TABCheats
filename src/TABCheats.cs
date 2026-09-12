@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using HarmonyLib;
@@ -41,6 +42,12 @@ namespace TABCheats
         [ConfigOption("瞬间建造/训练", ConfigOptionType.Checkbox, Category = "速度", Order = 8)]
         public bool InstantBuild { get; set; }
 
+        // 建造/训练时长（秒）。游戏里 BuildingTime 是"秒"的整数，最小 1，
+        // 这里走游戏自己的进度流程（进度条、血量增长、完工事件全都正常），只是把时长压到最短。
+        [ConfigOption("建造/训练时长(秒)", ConfigOptionType.Slider, Category = "速度", Order = 81)]
+        [Range(1.0, 60.0, 1.0)]
+        public double BuildSeconds { get; set; }
+
         [ConfigOption("瞬间研究+任意解锁", ConfigOptionType.Checkbox, Category = "速度", Order = 9)]
         public bool InstantResearch { get; set; }
 
@@ -63,6 +70,10 @@ namespace TABCheats
         [ConfigOption("作弊数值", ConfigOptionType.NumberInput, Category = "通用", Order = 14)]
         [Range(1.0, 2000000000.0, 1.0)]
         public int Amount { get; set; }
+
+        // 排查用：把结构体销毁/建造命令生命周期带调用栈写进 TABCheats.log（平时关掉）
+        [ConfigOption("诊断日志(排查用)", ConfigOptionType.Checkbox, Category = "通用", Order = 15)]
+        public bool DiagLog { get; set; }
 
         [ConfigOption("摧毁选中单位 热键", ConfigOptionType.KeyBinding, Category = "热键", Order = 20)]
         public string DestroyKey { get; set; }
@@ -121,6 +132,8 @@ namespace TABCheats
             GodMode = false;
             FastGameSpeed = false;
             GameSpeedMultiplier = 3.0;
+            BuildSeconds = 1.0;
+            DiagLog = false;
             ShowFullMap = false;
             Amount = 99999999;
             GoldKey = "F9";
@@ -144,6 +157,7 @@ namespace TABCheats
     {
         public static ModEntry Instance;
         public static TABCheatsConfig Cfg;
+        public static string LogPath;
         private AX.ModLoader.Mod _mod;
         private HarmonyLib.Harmony _harmony;
 
@@ -151,6 +165,7 @@ namespace TABCheats
         {
             Instance = this;
             _mod = mod;
+            try { LogPath = Path.Combine(mod.ModPath, "TABCheats.log"); } catch (Exception) { }
             WriteLog("OnLoad start, ModPath=" + mod.ModPath);
             try
             {
@@ -182,7 +197,8 @@ namespace TABCheats
         {
             try
             {
-                string p = Path.Combine(_mod.ModPath, "TABCheats.log");
+                string p = LogPath;
+                if (string.IsNullOrEmpty(p)) p = Path.Combine(_mod.ModPath, "TABCheats.log");
                 File.AppendAllText(p, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine);
             }
             catch (Exception) { }
@@ -202,10 +218,13 @@ namespace TABCheats
             PatchGetter(typeof(ZX.ZXLevelState), "get_TotalGoldStorage", "StoragePostfix");
             PatchGetter(typeof(ZX.ZXLevelState), "get_TotalResourcesStorage", "StoragePostfix");
             PatchGetter(typeof(ZX.ZXLevelState), "get_ShowFullMap", "ShowFullMapPostfix");
-            // 瞬间建造：建造(Build)/升级(Upgrade) 走的是 CBuildable，训练(Train)/维修(Repair) 走的是 CBuilder，
-            // 两个组件各有一份 _BuildingFactor，只打 CBuilder 会导致"建筑和升级一点都不快"。
-            PatchGetter(typeof(ZX.Components.CBuildable), "get_BuildingFactor", "BuildPostfix");
-            PatchGetter(typeof(ZX.Components.CBuilder), "get_BuildingFactor", "BuildPostfix");
+            // 瞬间建造：不去伪造 BuildingFactor（伪造进度会让建筑"刚点完就消失"：
+            // 进度被瞬间推到 >=1 时，建造命令会在同一个 tick 里走 OnFinish，建造站点还没走完自己的初始化就被判完工）。
+            // 这里改为压缩"建造时长"本身，建造流程 100% 走游戏原逻辑：
+            //   ZXEntityDefaultParams.BuildingTime  -> CBuildable.Entity_EventOnUpdate 的进度与血量增长
+            //   ZXCommandDefaultParams.BuildingTime -> ZXCommand.OnUpdate / GetExecutionTimeFor（训练/维修/升级同样生效）
+            PatchGetter(typeof(ZX.ZXEntityDefaultParams), "get_BuildingTime", "BuildTimePostfix");
+            PatchGetter(typeof(ZX.ZXCommandDefaultParams), "get_BuildingTime", "BuildTimePostfix");
             PatchGetter(typeof(ZX.ZXCampaignState), "get_ResearchPoints", "ResearchPostfix");
             PatchAnyMethod(typeof(ZX.ZXCampaignState), "CanUnlockResearch", "CanUnlockResearchPrefix", true);
             // 真正的游戏速度在引擎 DXVision.DXGame._GameSpeed（物理/逻辑每帧都读它）。
@@ -218,6 +237,57 @@ namespace TABCheats
             {
                 _harmony.Patch(keyUp, null, new HarmonyMethod(typeof(Patches).GetMethod("OnKeyUpPostfix", BindingFlags.Static | BindingFlags.Public)));
             }
+
+            PatchDiag();
+        }
+
+        // "诊断日志"开启时才有输出：谁把建筑销毁了、建造命令怎么走完的，全带调用栈。
+        private void PatchDiag()
+        {
+            PatchDiagOne("DXVision.DXEntity.Dispose", "DisposePrefix", false);
+            PatchDiagOne("ZX.Commands.Build.OnCancel", "BuildOnCancelPrefix", true);
+            PatchDiagOne("ZX.Commands.Build.OnFinish", "BuildOnFinishPrefix", true);
+            PatchDiagOne("ZX.Commands.Build.IsCommandFinished", "BuildFinishedPostfix", false);
+            PatchDiagOne("ZX.Components.CBuildable.Finish", "BuildableFinishPrefix", true);
+            PatchDiagOne("ZX.Commands.Destroy.OnExecute", "DestroyPrefix", true);
+            PatchDiagOne("ZX.Commands.UndoBuilding.OnExecute", "UndoPrefix", true);
+        }
+
+        private void PatchDiagOne(string typeDotMethod, string patchName, bool prefix)
+        {
+            try
+            {
+                string tn = typeDotMethod.Substring(0, typeDotMethod.LastIndexOf('.'));
+                string mn = typeDotMethod.Substring(typeDotMethod.LastIndexOf('.') + 1);
+                Type t = FindType(tn);
+                if (t == null) { Report("DIAG PATCH MISS " + typeDotMethod + " (找不到类型)"); return; }
+                MethodInfo mi = t.GetMethod(mn, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                if (mi == null) { Report("DIAG PATCH MISS " + typeDotMethod + " (找不到方法)"); return; }
+                MethodInfo pm = typeof(DiagPatches).GetMethod(patchName, BindingFlags.Static | BindingFlags.Public);
+                if (pm == null) { Report("DIAG PATCH MISS " + patchName); return; }
+                if (prefix) _harmony.Patch(mi, new HarmonyMethod(pm), null);
+                else _harmony.Patch(mi, null, new HarmonyMethod(pm));
+                Report("DIAG PATCH OK  " + typeDotMethod + " <- " + patchName);
+            }
+            catch (Exception ex)
+            {
+                Report("DIAG PATCH ERROR " + typeDotMethod + " : " + ex.Message);
+            }
+        }
+
+        // 在已加载的程序集里找类型（DXVision / 游戏本体都可能）
+        private static Type FindType(string fullName)
+        {
+            Type t = Type.GetType(fullName + ", DXVision");
+            if (t != null) return t;
+            t = Type.GetType(fullName + ", TheyAreBillions");
+            if (t != null) return t;
+            foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try { t = a.GetType(fullName, false); } catch (Exception) { t = null; }
+                if (t != null) return t;
+            }
+            return null;
         }
 
         // 每次加载都会把每个补丁的成败写进 TABCheats.log，出了问题一眼能看出是哪个补丁没打上。
@@ -301,9 +371,13 @@ namespace TABCheats
         {
             if (ON && ModEntry.Cfg.InfiniteStorage) __result = ModEntry.Cfg.Amount;
         }
-        public static void BuildPostfix(ref float __result)
+        public static void BuildTimePostfix(ref int __result)
         {
-            if (ON && ModEntry.Cfg.InstantBuild) __result = 10000f;
+            if (!ON || !ModEntry.Cfg.InstantBuild) return;
+            int secs = (int)Math.Round(ModEntry.Cfg.BuildSeconds);
+            if (secs < 1) secs = 1;          // 0 会让进度公式除零（进度直接变 Infinity）
+            if (secs > 60) secs = 60;
+            if (__result > secs) __result = secs;
         }
         public static void ResearchPostfix(ref int __result)
         {
@@ -389,6 +463,149 @@ namespace TABCheats
                 }
             }
             catch (Exception) { }
+        }
+    }
+
+    // ===== 诊断（只在"诊断日志"开启时输出）=====
+    public static class Diag
+    {
+        public static bool On
+        {
+            get { return ModEntry.Cfg != null && ModEntry.Cfg.DiagLog; }
+        }
+
+        private static bool _tooBig;
+        private static int _writes;
+
+        public static void Log(string msg)
+        {
+            if (!On || _tooBig) return;
+            try
+            {
+                string p = ModEntry.LogPath;
+                if (string.IsNullOrEmpty(p)) return;
+                if (++_writes % 200 == 0)
+                {
+                    var fi = new FileInfo(p);
+                    if (fi.Exists && fi.Length > 4 * 1024 * 1024) { _tooBig = true; return; }
+                }
+                File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff") + " DIAG " + msg + Environment.NewLine + ShortStack());
+            }
+            catch (Exception) { }
+        }
+
+        private static string ShortStack()
+        {
+            try
+            {
+                var st = new System.Diagnostics.StackTrace(1, false);
+                var sb = new StringBuilder();
+                int n = 0;
+                for (int i = 0; i < st.FrameCount && n < 10; i++)
+                {
+                    StackFrame fr = st.GetFrame(i);
+                    if (fr == null) continue;
+                    MethodBase mb = fr.GetMethod();
+                    if (mb == null || mb.DeclaringType == null) continue;
+                    sb.Append("        at ").Append(mb.DeclaringType.Name).Append('.').Append(mb.Name).AppendLine();
+                    n++;
+                }
+                return sb.ToString();
+            }
+            catch (Exception) { return ""; }
+        }
+
+        // 实体描述：类型 + 格子 + 建造进度 + 是否在建
+        public static string Desc(DXVision.DXEntity e)
+        {
+            if (e == null) return "<null>";
+            try
+            {
+                string s = e.GetType().Name + "@" + e.Cell.X + "," + e.Cell.Y;
+                try
+                {
+                    ZX.Components.CBuildable cb = e.GetComponent<ZX.Components.CBuildable>();
+                    if (cb != null) s += " factor=" + cb.BuildingFactor.ToString("F3");
+                }
+                catch (Exception) { }
+                ZX.Entities.Structure st = e as ZX.Entities.Structure;
+                if (st != null) s += " isBeingBuilt=" + (st.IsBeingBuilt ? "1" : "0");
+                return s;
+            }
+            catch (Exception) { return "<?>"; }
+        }
+
+        // 命令目标描述（Build 命令的 actor 身上挂着当前建造目标）。
+        // CCommandable/Target 在游戏程序集里不是 public，只能反射取。
+        private static readonly BindingFlags AnyFlag = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+        public static string TargetDesc(ZX.Entities.ZXEntity actor)
+        {
+            try
+            {
+                if (actor == null) return "<null actor>";
+                PropertyInfo ccProp = actor.GetType().GetProperty("CCommandable", AnyFlag);
+                if (ccProp == null) return "<no CCommandable>";
+                object cc = ccProp.GetValue(actor, null);
+                if (cc == null) return "<commandable null>";
+                PropertyInfo tProp = cc.GetType().GetProperty("Target", AnyFlag);
+                if (tProp == null) return "<no Target>";
+                object target = tProp.GetValue(cc, null);
+                if (target == null) return "<target null>";
+                FieldInfo refField = target.GetType().GetField("EntityRef", AnyFlag);
+                if (refField == null) return "<no EntityRef>";
+                object entityRef = refField.GetValue(target);
+                if (entityRef == null) return "<entityRef null>";
+                PropertyInfo eProp = entityRef.GetType().GetProperty("Entity", AnyFlag);
+                if (eProp == null) return "<no Entity>";
+                return Desc(eProp.GetValue(entityRef, null) as DXVision.DXEntity);
+            }
+            catch (Exception ex) { return "<err " + ex.GetType().Name + ">"; }
+        }
+    }
+
+    public class DiagPatches
+    {
+        public static void DisposePrefix(DXVision.DXEntity __instance)
+        {
+            if (!Diag.On) return;
+            if (__instance is ZX.Entities.Structure) Diag.Log("Structure.Dispose " + Diag.Desc(__instance));
+        }
+
+        public static void BuildOnCancelPrefix(ZX.Entities.ZXEntity actor)
+        {
+            Diag.Log("Build.OnCancel actor=" + Diag.Desc(actor) + " target=" + Diag.TargetDesc(actor));
+        }
+
+        public static void BuildOnFinishPrefix(ZX.Entities.ZXEntity actor)
+        {
+            Diag.Log("Build.OnFinish actor=" + Diag.Desc(actor) + " target=" + Diag.TargetDesc(actor));
+        }
+
+        // IsCommandFinished 每帧都会被问，只在"确实有建造目标"时记一行（否则日志会被刷爆）
+        public static void BuildFinishedPostfix(ZX.Entities.ZXEntity actor, ref bool __result)
+        {
+            if (!__result || !Diag.On) return;
+            string target = Diag.TargetDesc(actor);
+            if (target == "<null>" || target.StartsWith("<no") || target.StartsWith("<target") || target.StartsWith("<entityRef")) return;
+            Diag.Log("Build.IsCommandFinished=true actor=" + Diag.Desc(actor) + " target=" + target);
+        }
+
+        public static void BuildableFinishPrefix(ZX.Components.CBuildable __instance)
+        {
+            if (!Diag.On) return;
+            try { Diag.Log("CBuildable.Finish " + Diag.Desc(__instance.Entity)); }
+            catch (Exception) { Diag.Log("CBuildable.Finish <no entity>"); }
+        }
+
+        public static void DestroyPrefix(ZX.Entities.ZXEntity actor)
+        {
+            Diag.Log("Destroy.OnExecute " + Diag.Desc(actor));
+        }
+
+        public static void UndoPrefix(ZX.Entities.ZXEntity actor)
+        {
+            Diag.Log("UndoBuilding.OnExecute " + Diag.Desc(actor));
         }
     }
 }

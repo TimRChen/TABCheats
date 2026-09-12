@@ -24,7 +24,8 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 | 无限工人 | F5 | 剩余工人恒为极大值 |
 | 人口上限拉满 | F4 | 人口上限恒为极大值 |
 | 无限库存/建筑上限 | F3 | 仓库/建筑上限恒为极大值 |
-| 瞬间建造/训练 | F2 | 建造/升级/训练/维修的 BuildingFactor 拉满，即刻完成 |
+| 瞬间建造/训练 | F2 | 把"建造时长"压到 1 秒（可调），建造/升级/训练/维修走游戏自己的进度流程 |
+| 建造/训练时长(秒) | — | 选项页滑块 1~60（默认 1）。走原版流程，进度条/血量增长/完工事件都正常 |
 | 瞬间研究 + 任意解锁 | F1 | 研究点极大 + 可解锁任意科技 |
 | 无敌（选中单位不掉血） | F10 | 关闭 CLife.AddDamage |
 | 超级速度 | F11 | 引擎级变速：直接改写 DXVision.DXGame 的游戏速度倍率 |
@@ -86,12 +87,14 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
       "MaxColonists": true,
       "InfiniteStorage": true,
       "InstantBuild": true,
+      "BuildSeconds": 1.0,
       "InstantResearch": true,
       "GodMode": false,
       "FastGameSpeed": false,
       "GameSpeedMultiplier": 3.0,
       "ShowFullMap": false,
       "Amount": 99999999,
+      "DiagLog": false,
       "GoldKey": "F9",
       "ResourcesKey": "F8",
       "FoodKey": "F7",
@@ -115,8 +118,9 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 通过 RegisterConfig<TABCheatsConfig>() 把配置注册进 ModLoader 的配置系统，[ConfigOption] 属性驱动游戏内选项页。
 - 通过 Harmony 对以下游戏方法打补丁（每次加载都把成败写进 `Mods/TABCheats/TABCheats.log`，`PATCH MISS/ERROR` 一眼可见）：
   - ZX.ZXLevelState 的资源/人口/库存 getter（无限值）
-  - ZX.Components.CBuildable.get_BuildingFactor（瞬间建造：建造 Build / 升级 Upgrade 走的是这个组件）
-  - ZX.Components.CBuilder.get_BuildingFactor（瞬间建造：训练 Train / 维修 Repair 走的是这个组件）
+  - **ZX.ZXEntityDefaultParams.get_BuildingTime**（瞬间建造：建筑自身 CBuildable 的进度与血量增长按这个时长走）
+  - **ZX.ZXCommandDefaultParams.get_BuildingTime**（瞬间建造：Build/Train/Repair/Upgrade 命令的进度按这个时长走）
+    `BuildingTime = round(1.4 × BuildingTimeFactor × 20)`，单位是秒且是整数，所以最快只能压到 1 秒。
   - ZX.ZXCampaignState.get_ResearchPoints / CanUnlockResearch（瞬间研究）
   - **DXVision.DXGame.get_GameSpeed**（超级速度：引擎的物理/逻辑时钟每帧读它；`ZX.DXGameState.get_GameSpeed` 只是存档里的速度快照，改它对游戏速度毫无作用）
   - ZX.Components.CLife.AddDamage（无敌）
@@ -131,6 +135,19 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 存档提示：游戏会把"当前速度"一起存进存档。开着超级速度存档后，即使关掉作弊，读档也会保留该速度（按 `+`/`-` 或选项页倍率即可调回）。
 
 ## 更新日志
+
+### v1.0.3（修复"开启瞬间建造后建筑刚放下就消失"）
+
+- **根因**：v1.0.2 用"把 CBuildable/CBuilder 的 BuildingFactor 直接改成 10000"来实现瞬间完工。
+  `ZX.Commands.Build.IsCommandFinished` 判的是 `BuildingFactor >= 1`，于是**建造命令在放置的同一个 tick 里就被判定完工**，
+  建造站点自己的 `CBuildable.Entity_EventOnUpdate`（设置 20% 初始血量 → 逐渐涨满 → 调 `Finish()` → 清理组件/视觉）
+  根本没机会跑完，站点就被当成"完工/无效"收拾掉了 —— 表现就是建筑刚落下就没了。
+- **改法**：不再伪造进度，改成压缩**建造时长**本身（`get_BuildingTime`），整条建造链路（进度条、血量增长、
+  `Finish()`、`NotifyEntityBuilt`、任务目标统计）100% 走游戏原逻辑，只是从 28 秒变成 1 秒。
+  新增选项 `建造/训练时长(秒)`（1~60，默认 1）；把时长设成 0 会除以零，代码里已强制下限为 1。
+- **诊断**：新增 `诊断日志(排查用)` 开关，打开后 `TABCheats.log` 会记录
+  "哪个结构被 Dispose（带调用栈）/ Build 命令 OnCancel/OnFinish/完工判定 / Destroy/撤销命令"，
+  以后再出"建筑消失"这类问题能直接看日志定位。日志超过 4 MB 自动停止写入。
 
 ### v1.0.2（修复"选项页调不了速度 / 瞬间建造不生效 / 资源不增长"）
 
