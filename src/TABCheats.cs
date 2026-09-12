@@ -47,7 +47,10 @@ namespace TABCheats
         [ConfigOption("超级速度", ConfigOptionType.Checkbox, Category = "速度", Order = 10)]
         public bool FastGameSpeed { get; set; }
 
-        [ConfigOption("游戏速度倍率", ConfigOptionType.Slider, Category = "速度", Order = 11)]
+        // 注意：必须带 [Range]，否则 ModLoader 的滑块 Min=Max=0，选项页里根本改不动，
+        // 而且会被写回 0.0 —— 0 在引擎里等于"暂停"（DXGame.Paused == GameSpeed==0）。
+        [ConfigOption("游戏速度倍率(1=原速)", ConfigOptionType.Slider, Category = "速度", Order = 11)]
+        [Range(1.0, 10.0, 1.0)]
         public double GameSpeedMultiplier { get; set; }
 
         [ConfigOption("无敌(选中单位不掉血)", ConfigOptionType.Checkbox, Category = "战斗", Order = 12)]
@@ -56,7 +59,9 @@ namespace TABCheats
         [ConfigOption("全图显示", ConfigOptionType.Checkbox, Category = "战斗", Order = 13)]
         public bool ShowFullMap { get; set; }
 
+        // 同理：NumberInput 也会按 [Range] 的 Min/Max 校验，没有 Range 就只能填 0。
         [ConfigOption("作弊数值", ConfigOptionType.NumberInput, Category = "通用", Order = 14)]
+        [Range(1.0, 2000000000.0, 1.0)]
         public int Amount { get; set; }
 
         [ConfigOption("摧毁选中单位 热键", ConfigOptionType.KeyBinding, Category = "热键", Order = 20)]
@@ -115,7 +120,7 @@ namespace TABCheats
             InstantResearch = true;
             GodMode = false;
             FastGameSpeed = false;
-            GameSpeedMultiplier = 4.0;
+            GameSpeedMultiplier = 3.0;
             ShowFullMap = false;
             Amount = 99999999;
             GoldKey = "F9";
@@ -197,10 +202,15 @@ namespace TABCheats
             PatchGetter(typeof(ZX.ZXLevelState), "get_TotalGoldStorage", "StoragePostfix");
             PatchGetter(typeof(ZX.ZXLevelState), "get_TotalResourcesStorage", "StoragePostfix");
             PatchGetter(typeof(ZX.ZXLevelState), "get_ShowFullMap", "ShowFullMapPostfix");
+            // 瞬间建造：建造(Build)/升级(Upgrade) 走的是 CBuildable，训练(Train)/维修(Repair) 走的是 CBuilder，
+            // 两个组件各有一份 _BuildingFactor，只打 CBuilder 会导致"建筑和升级一点都不快"。
+            PatchGetter(typeof(ZX.Components.CBuildable), "get_BuildingFactor", "BuildPostfix");
             PatchGetter(typeof(ZX.Components.CBuilder), "get_BuildingFactor", "BuildPostfix");
             PatchGetter(typeof(ZX.ZXCampaignState), "get_ResearchPoints", "ResearchPostfix");
             PatchAnyMethod(typeof(ZX.ZXCampaignState), "CanUnlockResearch", "CanUnlockResearchPrefix", true);
-            PatchGetter(typeof(ZX.DXGameState), "get_GameSpeed", "GameSpeedPostfix");
+            // 真正的游戏速度在引擎 DXVision.DXGame._GameSpeed（物理/逻辑每帧都读它）。
+            // ZX.DXGameState.get_GameSpeed 只是存档里的速度快照，改它对游戏速度没有任何作用。
+            PatchGetter(typeof(DXVision.DXGame), "get_GameSpeed", "GameSpeedPostfix");
             PatchAnyMethod(typeof(ZX.Components.CLife), "AddDamage", "AddDamagePrefix", true);
 
             MethodInfo keyUp = typeof(ZX.ZXSystem_GameLevel).GetMethod("OnKeyUp");
@@ -210,29 +220,56 @@ namespace TABCheats
             }
         }
 
+        // 每次加载都会把每个补丁的成败写进 TABCheats.log，出了问题一眼能看出是哪个补丁没打上。
+        public static readonly List<string> PatchReport = new List<string>();
+
+        private void Report(string line)
+        {
+            PatchReport.Add(line);
+            WriteLog(line);
+        }
+
         private void PatchGetter(Type type, string methodName, string patchName)
         {
             MethodInfo mi = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-            if (mi == null) { WriteLog("Miss getter " + type.FullName + "." + methodName); return; }
+            if (mi == null) { Report("PATCH MISS  " + type.FullName + "." + methodName + " (游戏里找不到这个方法)"); return; }
             MethodInfo pm = typeof(Patches).GetMethod(patchName, BindingFlags.Static | BindingFlags.Public);
-            if (pm == null) { WriteLog("Miss patch " + patchName); return; }
-            _harmony.Patch(mi, null, new HarmonyMethod(pm));
+            if (pm == null) { Report("PATCH MISS  " + patchName); return; }
+            try
+            {
+                _harmony.Patch(mi, null, new HarmonyMethod(pm));
+                Report("PATCH OK    " + type.FullName + "." + methodName + " <- " + patchName);
+            }
+            catch (Exception ex)
+            {
+                Report("PATCH ERROR " + type.FullName + "." + methodName + " : " + ex.Message);
+            }
         }
 
         private void PatchAnyMethod(Type type, string methodName, string patchName, bool prefix)
         {
             MethodInfo mi = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-            if (mi == null) { WriteLog("Miss method " + type.FullName + "." + methodName); return; }
+            if (mi == null) { Report("PATCH MISS  " + type.FullName + "." + methodName + " (游戏里找不到这个方法)"); return; }
             MethodInfo pm = typeof(Patches).GetMethod(patchName, BindingFlags.Static | BindingFlags.Public);
-            if (pm == null) { WriteLog("Miss patch " + patchName); return; }
-            if (prefix) _harmony.Patch(mi, new HarmonyMethod(pm), null);
-            else _harmony.Patch(mi, null, new HarmonyMethod(pm));
+            if (pm == null) { Report("PATCH MISS  " + patchName); return; }
+            try
+            {
+                if (prefix) _harmony.Patch(mi, new HarmonyMethod(pm), null);
+                else _harmony.Patch(mi, null, new HarmonyMethod(pm));
+                Report("PATCH OK    " + type.FullName + "." + methodName + " <- " + patchName);
+            }
+            catch (Exception ex)
+            {
+                Report("PATCH ERROR " + type.FullName + "." + methodName + " : " + ex.Message);
+            }
         }
     }
 
     public class Patches
     {
         public const int Big = 99999999;
+        public const double DefaultSpeedMultiplier = 3.0;
+        public const double MaxSpeedMultiplier = 10.0;
 
         private static bool ON { get { return ModEntry.Cfg != null && ModEntry.Cfg.EnableCheats; } }
 
@@ -279,7 +316,14 @@ namespace TABCheats
         }
         public static void GameSpeedPostfix(ref double __result)
         {
-            if (ON && ModEntry.Cfg.FastGameSpeed) __result = ModEntry.Cfg.GameSpeedMultiplier;
+            if (!ON || !ModEntry.Cfg.FastGameSpeed) return;
+            // __result == 0 是引擎的"暂停"状态（DXGame.Paused == (GameSpeed == 0)），不能覆盖，
+            // 否则开着作弊就没法暂停游戏了。
+            if (__result <= 0.0) return;
+            double m = ModEntry.Cfg.GameSpeedMultiplier;
+            if (double.IsNaN(m) || m < 1.0) m = DefaultSpeedMultiplier;   // 0 / 负值会把游戏卡成暂停
+            if (m > MaxSpeedMultiplier) m = MaxSpeedMultiplier;
+            __result = m;
         }
         public static void ShowFullMapPostfix(ref bool __result)
         {

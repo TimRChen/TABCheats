@@ -1,8 +1,9 @@
-# build output
+# build output (dist/ in repo root, refs/ next to the build script - extracted game binaries, do NOT redistribute)
 /dist/
-/refs/
+refs/
 /bin/
 /obj/
+scripts/dist/
 
 # csc pdb
 *.pdb
