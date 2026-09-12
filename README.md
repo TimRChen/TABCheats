@@ -8,6 +8,15 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 不依赖外部进程 / 内存修改器，不触发 Eazfuscator 反篡改；
 - 所有作弊项都支持**热键切换**，也支持在游戏内 **MOD 选项页**直接勾选、即时生效。
 
+## 默认状态：**关闭**
+
+装好后不会自动生效：`EnableCheats` 默认 `false`，所有作弊项（含"瞬间建造/无限产出"这些默认勾选的项）都只是"待命"，
+必须由你主动打开总开关才会生效：
+
+- 游戏内按 **Home**（可改 `MasterKey`）——一键开/关，切换会写进 `TABCheats.log`；
+- 或在 **MOD 选项页** 勾选「启用 TABCheats 作弊总开关」；
+- 或直接改 `Mods/Configs/TABCheats.json` 的 `"EnableCheats": true` 再启动游戏。
+
 > 本项目是源码开源的 MOD。游戏本体、DXVision.dll、0Harmony.dll 等私有二进制不属于本项目，请从你自己的游戏安装中获取/提取。
 
 ---
@@ -140,6 +149,15 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 存档提示：游戏会把"当前速度"一起存进存档。开着超级速度存档后，即使关掉作弊，读档也会保留该速度（按 `+`/`-` 或选项页倍率即可调回）。
 
 ## 更新日志
+
+### v1.0.6（默认关闭 + 日志更明确）
+
+- 明确默认 **关闭**：`EnableCheats` 代码默认 `false`，随包示例配置也是 `false`，部署时把玩家配置里被打开的总开关一并改回 `false`。
+- 启动日志写明状态：`Config registered. EnableCheats=False  [作弊未生效 · 按 Home 开启，或在选项页勾选「启用 TABCheats 作弊总开关」]`；
+  按 Home 切换时也会记一行 `Master toggle (Home) -> ON/OFF`，方便回查。
+- 顺带把 `DiagLog` 默认关掉（诊断日志只在排查时开）。
+- 注意：**游戏运行时 `Mods/TABCheats/TABCheats.dll` 被游戏占用**，替换会失败（文件被另一进程使用）。
+  仓库里带了 `_tools/deploy_after_game_exit.ps1`：等游戏退出后自动部署新 DLL 并把总开关强制写回 `false`。
 
 ### v1.0.5（产出/产量也能拉满）
 

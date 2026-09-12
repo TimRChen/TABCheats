@@ -179,7 +179,10 @@ namespace TABCheats
             {
                 Cfg = _mod.RegisterConfig<TABCheatsConfig>();
                 if (Cfg == null) { Cfg = new TABCheatsConfig(); }
-                WriteLog("Config registered. EnableCheats=" + Cfg.EnableCheats);
+                WriteLog("Config registered. EnableCheats=" + Cfg.EnableCheats
+                    + (Cfg.EnableCheats
+                        ? "  [作弊生效中]"
+                        : "  [作弊未生效 · 按 " + Cfg.MasterKey + " 开启，或在选项页勾选「启用 TABCheats 作弊总开关」]"));
                 _harmony = new HarmonyLib.Harmony("TABCheats");
                 PatchAll();
                 WriteLog("OnLoad OK");
@@ -203,10 +206,16 @@ namespace TABCheats
 
         private void WriteLog(string msg)
         {
+            Log(msg);
+        }
+
+        // 静态版：热键切换等场景也要写日志（实例方法有时拿不到）
+        public static void Log(string msg)
+        {
             try
             {
                 string p = LogPath;
-                if (string.IsNullOrEmpty(p)) p = Path.Combine(_mod.ModPath, "TABCheats.log");
+                if (string.IsNullOrEmpty(p)) return;
                 File.AppendAllText(p, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine);
             }
             catch (Exception) { }
@@ -458,6 +467,7 @@ namespace TABCheats
             {
                 ModEntry.Cfg.EnableCheats = !ModEntry.Cfg.EnableCheats;
                 try { ModEntry.Cfg.Save(); } catch (Exception) { }
+                ModEntry.Log("Master toggle (" + ModEntry.Cfg.MasterKey + ") -> " + (ModEntry.Cfg.EnableCheats ? "ON 作弊已开启" : "OFF 作弊已关闭"));
                 return;
             }
             if (!ModEntry.Cfg.EnableCheats) return;
