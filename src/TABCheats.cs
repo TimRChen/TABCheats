@@ -42,9 +42,10 @@ namespace TABCheats
         [ConfigOption("瞬间建造/训练", ConfigOptionType.Checkbox, Category = "速度", Order = 8)]
         public bool InstantBuild { get; set; }
 
-        // 建造/训练时长（秒）。游戏里 BuildingTime 是"秒"的整数，最小 1，
-        // 这里走游戏自己的进度流程（进度条、血量增长、完工事件全都正常），只是把时长压到最短。
-        [ConfigOption("建造/训练时长(秒)", ConfigOptionType.Slider, Category = "速度", Order = 81)]
+        // 建造/训练/研究时长（秒）。游戏里这类时长是"秒"的整数，最小 1。
+        // 走游戏自己的进度流程（进度条、血量增长、完工事件全都正常），只是把时长压到最短。
+        // 故意**不挂 [ConfigOption]**：选项页的滑块容易被误拖成 60（那会让建造/研究重新变慢），
+        // 需要微调的人直接改 Mods/Configs/TABCheats.json 里的 BuildSeconds 即可。
         [Range(1.0, 60.0, 1.0)]
         public double BuildSeconds { get; set; }
 

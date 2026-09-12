@@ -25,7 +25,8 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 | 人口上限拉满 | F4 | 人口上限恒为极大值 |
 | 无限库存/建筑上限 | F3 | 仓库/建筑上限恒为极大值 |
 | 瞬间建造/训练 | F2 | 把"建造时长"压到 1 秒（可调），建造/升级/训练/维修走游戏自己的进度流程 |
-| 建造/训练时长(秒) | — | 选项页滑块 1~60（默认 1）。走原版流程，进度条/血量增长/完工事件都正常 |
+| 建造/训练/研究时长 | — | 默认 1 秒，**只在 Mods/Configs/TABCheats.json 里改 `BuildSeconds`(1~60)** |
+| | | 故意不做成选项页滑块：滑块容易被顺手拖成 60，反而让建造/研究变慢 |
 | 瞬间研究 + 任意解锁 | F1 | 研究点极大 + 可解锁任意科技 + 作坊研究进度同样压到 1 秒（可调） |
 | 无敌（选中单位不掉血） | F10 | 关闭 CLife.AddDamage |
 | 超级速度 | F11 | 引擎级变速：直接改写 DXVision.DXGame 的游戏速度倍率 |
@@ -147,6 +148,18 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - **改法**：对 `ZX.Commands.ZXCommand / Technology / Train / Repair` 四个 `GetExecutionTimeFor` 都加"封顶"补丁
   （只压不涨，0 的瞬发命令不动）→ 研究、训练、建造、升级、维修统一走"建造/训练时长(秒)"（默认 1 秒）。
 - 诊断日志新增研究完成事件（`Technology.OnFinish (研究完成)`），方便确认。
+- `BuildSeconds` **不再作为选项页控件**（实测被误拖成 60，会让建造/研究重新变慢），改成只认 JSON；
+  想要"字面 0 秒"的话得改 IL（放大进度常量），可以再提。
+
+### v1.0.4 补充：进度类时长一览（改时长类作弊前先看这里）
+
+| 操作 | 时长来源 |
+|---|---|
+| 建筑自身施工进度/血量增长 | `ZXEntityDefaultParams.get_BuildingTime` = `round(1.4 × factor × 20)` |
+| 建造/升级命令进度 | `ZXCommandDefaultParams.get_BuildingTime` = `round(1.4 × factor × 20)` |
+| **研究（作坊）** | `ZX.Commands.Technology.GetExecutionTimeFor` = `round(1.4 × factor × **50**)` |
+| 训练 | `ZX.Commands.Train.GetExecutionTimeFor` = `round(1.4 × factor × 20)` |
+| 维修 | `ZX.Commands.Repair.GetExecutionTimeFor` = `max(1, round((1-血量比例) × 实体BuildingTime))` |
 
 ### v1.0.3（修复"开启瞬间建造后建筑刚放下就消失"）
 
