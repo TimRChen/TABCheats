@@ -39,6 +39,12 @@ namespace TABCheats
         [ConfigOption("无限库存/建筑上限", ConfigOptionType.Checkbox, Category = "资源", Order = 7)]
         public bool InfiniteStorage { get; set; }
 
+        // 产出（产量）拉满：游戏用 ZXLevelState 的 *Production 判断"石油/铁/石/木产量够不够运营这个建筑"
+        // （CheckResourcesSupplyRequisitesForCreating：production < 建筑消耗就禁用并红字提示），
+        // 只把库存拉满是不够的，产量也得给足，建筑才能正常运转。
+        [ConfigOption("无限产出(产量拉满)", ConfigOptionType.Checkbox, Category = "资源", Order = 8)]
+        public bool InfiniteProduction { get; set; }
+
         [ConfigOption("瞬间建造/训练", ConfigOptionType.Checkbox, Category = "速度", Order = 8)]
         public bool InstantBuild { get; set; }
 
@@ -128,6 +134,7 @@ namespace TABCheats
             InfiniteWorkers = true;
             MaxColonists = true;
             InfiniteStorage = true;
+            InfiniteProduction = true;
             InstantBuild = true;
             InstantResearch = true;
             GodMode = false;
@@ -219,6 +226,12 @@ namespace TABCheats
             PatchGetter(typeof(ZX.ZXLevelState), "get_TotalGoldStorage", "StoragePostfix");
             PatchGetter(typeof(ZX.ZXLevelState), "get_TotalResourcesStorage", "StoragePostfix");
             PatchGetter(typeof(ZX.ZXLevelState), "get_ShowFullMap", "ShowFullMapPostfix");
+            // 产量：建筑"能不能运转"看的是这几个值（不是库存），拉满后红字"石油产量不足以运营该建筑"消失
+            PatchGetter(typeof(ZX.ZXLevelState), "get_GoldProduction", "ProductionPostfix");
+            PatchGetter(typeof(ZX.ZXLevelState), "get_WoodProduction", "ProductionPostfix");
+            PatchGetter(typeof(ZX.ZXLevelState), "get_StoneProduction", "ProductionPostfix");
+            PatchGetter(typeof(ZX.ZXLevelState), "get_IronProduction", "ProductionPostfix");
+            PatchGetter(typeof(ZX.ZXLevelState), "get_OilProduction", "ProductionPostfix");
             // 瞬间建造：不去伪造 BuildingFactor（伪造进度会让建筑"刚点完就消失"：
             // 进度被瞬间推到 >=1 时，建造命令会在同一个 tick 里走 OnFinish，建造站点还没走完自己的初始化就被判完工）。
             // 这里改为压缩"建造时长"本身，建造流程 100% 走游戏原逻辑：
@@ -378,6 +391,10 @@ namespace TABCheats
         public static void StoragePostfix(ref int __result)
         {
             if (ON && ModEntry.Cfg.InfiniteStorage) __result = ModEntry.Cfg.Amount;
+        }
+        public static void ProductionPostfix(ref int __result)
+        {
+            if (ON && ModEntry.Cfg.InfiniteProduction) __result = ModEntry.Cfg.Amount;
         }
         // 目标时长（秒）。必须 >= 1：0 会让进度公式除零（进度一步跳到 Infinity），
         // 也会让 ZXCommand.Execute 跳过 AddComponent<CBuilder>() 导致命令永远跑不完。

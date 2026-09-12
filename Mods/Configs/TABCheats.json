@@ -7,6 +7,7 @@
   "InfiniteWorkers": true,
   "MaxColonists": true,
   "InfiniteStorage": true,
+  "InfiniteProduction": true,
   "InstantBuild": true,
   "BuildSeconds": 1.0,
   "InstantResearch": true,

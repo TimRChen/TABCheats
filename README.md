@@ -24,6 +24,7 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 | 无限工人 | F5 | 剩余工人恒为极大值 |
 | 人口上限拉满 | F4 | 人口上限恒为极大值 |
 | 无限库存/建筑上限 | F3 | 仓库/建筑上限恒为极大值 |
+| 无限产出(产量拉满) | — | 金/木/石/铁/油的"产量"恒为极大值（默认开）。库存拉满 ≠ 产量够：`石油产量不足以运营该建筑` 这类红字看的是产量 |
 | 瞬间建造/训练 | F2 | 把"建造时长"压到 1 秒（可调），建造/升级/训练/维修走游戏自己的进度流程 |
 | 建造/训练/研究时长 | — | 默认 1 秒，**只在 Mods/Configs/TABCheats.json 里改 `BuildSeconds`(1~60)** |
 | | | 故意不做成选项页滑块：滑块容易被顺手拖成 60，反而让建造/研究变慢 |
@@ -139,6 +140,18 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 存档提示：游戏会把"当前速度"一起存进存档。开着超级速度存档后，即使关掉作弊，读档也会保留该速度（按 `+`/`-` 或选项页倍率即可调回）。
 
 ## 更新日志
+
+### v1.0.5（产出/产量也能拉满）
+
+- 用户报障：开着作弊放下"胜利堡"（消耗石油 10/周期）时提示**"石油产量不足以运营该建筑"**，建筑无法运转。
+- **根因**：作弊只把**库存**（`get_Wood/Stone/Iron/Oil/Gold`）钉成极大值，但游戏判断"这建筑能不能开门"用的是
+  `ZXLevelState` 的**产量**：`ZXCommand.CheckResourcesSupplyRequisitesForCreating()` 里
+  `if (Params.OilGen < 0 && LevelState.OilProduction < -Params.OilGen) → MessageNotEnabled_OilLowBuilding`
+  （铁/石/木同理）。产量是全部建筑产出的**净值**（可为负），库存再大也不影响它。
+- **改法**：新增选项 **无限产出(产量拉满)**（默认开），postfix `ZXLevelState.get_Gold/Wood/Stone/Iron/OilProduction`
+  → `Amount`。红字消失、建筑正常运转，资源条上的 +N 也变成极大值。
+  产量在 `UpdateResourcesStats()` 里是 `set_X(get_X() + delta)` 逐建筑累加的，读到的值被我们固定成常量，
+  写入的字段只会是"常量+单个增量"，不会溢出、也不会滚雪球。
 
 ### v1.0.4（修复"研究了半天没变快"）
 
