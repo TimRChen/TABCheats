@@ -225,6 +225,12 @@ namespace TABCheats
             //   ZXCommandDefaultParams.BuildingTime -> ZXCommand.OnUpdate / GetExecutionTimeFor（训练/维修/升级同样生效）
             PatchGetter(typeof(ZX.ZXEntityDefaultParams), "get_BuildingTime", "BuildTimePostfix");
             PatchGetter(typeof(ZX.ZXCommandDefaultParams), "get_BuildingTime", "BuildTimePostfix");
+            // 研究/训练/维修的时长各自是 override，公式还不一样（研究界面上那条进度条走的是 Technology ×50、
+            // 训练是 Train ×20、维修按血量算），只压 get_BuildingTime 管不到它们，所以四个 override 都封顶。
+            PatchGetter(typeof(ZX.Commands.ZXCommand), "GetExecutionTimeFor", "ExecutionTimePostfix");
+            PatchGetter(typeof(ZX.Commands.Technology), "GetExecutionTimeFor", "ExecutionTimePostfix");
+            PatchGetter(typeof(ZX.Commands.Train), "GetExecutionTimeFor", "ExecutionTimePostfix");
+            PatchGetter(typeof(ZX.Commands.Repair), "GetExecutionTimeFor", "ExecutionTimePostfix");
             PatchGetter(typeof(ZX.ZXCampaignState), "get_ResearchPoints", "ResearchPostfix");
             PatchAnyMethod(typeof(ZX.ZXCampaignState), "CanUnlockResearch", "CanUnlockResearchPrefix", true);
             // 真正的游戏速度在引擎 DXVision.DXGame._GameSpeed（物理/逻辑每帧都读它）。
@@ -251,6 +257,7 @@ namespace TABCheats
             PatchDiagOne("ZX.Components.CBuildable.Finish", "BuildableFinishPrefix", true);
             PatchDiagOne("ZX.Commands.Destroy.OnExecute", "DestroyPrefix", true);
             PatchDiagOne("ZX.Commands.UndoBuilding.OnExecute", "UndoPrefix", true);
+            PatchDiagOne("ZX.Commands.Technology.OnFinish", "TechnologyFinishPrefix", true);
         }
 
         private void PatchDiagOne(string typeDotMethod, string patchName, bool prefix)
@@ -371,12 +378,28 @@ namespace TABCheats
         {
             if (ON && ModEntry.Cfg.InfiniteStorage) __result = ModEntry.Cfg.Amount;
         }
+        // 目标时长（秒）。必须 >= 1：0 会让进度公式除零（进度一步跳到 Infinity），
+        // 也会让 ZXCommand.Execute 跳过 AddComponent<CBuilder>() 导致命令永远跑不完。
+        private static int TargetSeconds()
+        {
+            int secs = (int)Math.Round(ModEntry.Cfg.BuildSeconds);
+            if (secs < 1) secs = 1;
+            if (secs > 60) secs = 60;
+            return secs;
+        }
+
         public static void BuildTimePostfix(ref int __result)
         {
             if (!ON || !ModEntry.Cfg.InstantBuild) return;
-            int secs = (int)Math.Round(ModEntry.Cfg.BuildSeconds);
-            if (secs < 1) secs = 1;          // 0 会让进度公式除零（进度直接变 Infinity）
-            if (secs > 60) secs = 60;
+            int secs = TargetSeconds();
+            if (__result > secs) __result = secs;
+        }
+
+        // 只封顶、不抬高：值为 0 的是"瞬发"命令（攻击/移动等），保持原样。
+        public static void ExecutionTimePostfix(ref int __result)
+        {
+            if (!ON || !ModEntry.Cfg.InstantBuild) return;
+            int secs = TargetSeconds();
             if (__result > secs) __result = secs;
         }
         public static void ResearchPostfix(ref int __result)
@@ -606,6 +629,11 @@ namespace TABCheats
         public static void UndoPrefix(ZX.Entities.ZXEntity actor)
         {
             Diag.Log("UndoBuilding.OnExecute " + Diag.Desc(actor));
+        }
+
+        public static void TechnologyFinishPrefix(ZX.Entities.ZXEntity actor)
+        {
+            Diag.Log("Technology.OnFinish (研究完成) " + Diag.Desc(actor));
         }
     }
 }

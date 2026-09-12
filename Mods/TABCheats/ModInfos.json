@@ -1,9 +1,9 @@
 {
   "Id": "TABCheats",
   "Name": "亿万僵尸 二十项作弊/兼容修改器 (TABCheats)",
-  "Version": "1.0.3",
+  "Version": "1.0.4",
   "Author": "TABCheats contributors",
-  "Description": "游戏内原生作弊 MOD：无限金币/资源/食物/能量/工人、人口上限、无限库存、瞬间建造/训练（压缩建造时长，1 秒完成，走原版流程不会掉建筑）、瞬间研究、游戏加速（引擎级变速，选项页倍率可调）、无敌、全图、摧毁选中单位等。与 TABHelper/汉化/存档管理器同进程共存，不改 TABHelper。",
+  "Description": "游戏内原生作弊 MOD：无限金币/资源/食物/能量/工人、人口上限、无限库存、瞬间建造/训练/研究（压缩时长到 1 秒，走原版流程不会掉建筑）、研究点拉满+任意解锁、游戏加速（引擎级变速，选项页倍率可调）、无敌、全图、摧毁选中单位等。与 TABHelper/汉化/存档管理器同进程共存，不改 TABHelper。",
   "IsCampaign": false,
   "IsGlobalEnabled": true,
   "Dependencies": [],

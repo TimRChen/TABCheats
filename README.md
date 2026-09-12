@@ -26,7 +26,7 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 | 无限库存/建筑上限 | F3 | 仓库/建筑上限恒为极大值 |
 | 瞬间建造/训练 | F2 | 把"建造时长"压到 1 秒（可调），建造/升级/训练/维修走游戏自己的进度流程 |
 | 建造/训练时长(秒) | — | 选项页滑块 1~60（默认 1）。走原版流程，进度条/血量增长/完工事件都正常 |
-| 瞬间研究 + 任意解锁 | F1 | 研究点极大 + 可解锁任意科技 |
+| 瞬间研究 + 任意解锁 | F1 | 研究点极大 + 可解锁任意科技 + 作坊研究进度同样压到 1 秒（可调） |
 | 无敌（选中单位不掉血） | F10 | 关闭 CLife.AddDamage |
 | 超级速度 | F11 | 引擎级变速：直接改写 DXVision.DXGame 的游戏速度倍率 |
 | 游戏速度倍率 | — | 选项页滑块 1~10（1=原速，默认 3）。游戏暂停（速度 0）不受影响 |
@@ -119,8 +119,11 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 通过 Harmony 对以下游戏方法打补丁（每次加载都把成败写进 `Mods/TABCheats/TABCheats.log`，`PATCH MISS/ERROR` 一眼可见）：
   - ZX.ZXLevelState 的资源/人口/库存 getter（无限值）
   - **ZX.ZXEntityDefaultParams.get_BuildingTime**（瞬间建造：建筑自身 CBuildable 的进度与血量增长按这个时长走）
-  - **ZX.ZXCommandDefaultParams.get_BuildingTime**（瞬间建造：Build/Train/Repair/Upgrade 命令的进度按这个时长走）
-    `BuildingTime = round(1.4 × BuildingTimeFactor × 20)`，单位是秒且是整数，所以最快只能压到 1 秒。
+  - **ZX.ZXCommandDefaultParams.get_BuildingTime**（瞬间建造：Build/Upgrade 命令的进度按这个时长走）
+  - **ZX.Commands.ZXCommand / Technology / Train / Repair 的 `GetExecutionTimeFor`**（四个 override 各自公式不同：
+    基类与 Train 是 `round(1.4 × factor × 20)`、**研究（Technology）是 `round(1.4 × factor × 50)`**、维修按受损血量算；
+    只压 `get_BuildingTime` 管不到研究/训练，所以这四个都封顶）
+    `BuildingTime` 单位是秒且是整数，所以最快只能压到 1 秒；补丁只"封顶"不"抬高"，0 表示瞬发命令（攻击/移动等）不受影响。
   - ZX.ZXCampaignState.get_ResearchPoints / CanUnlockResearch（瞬间研究）
   - **DXVision.DXGame.get_GameSpeed**（超级速度：引擎的物理/逻辑时钟每帧读它；`ZX.DXGameState.get_GameSpeed` 只是存档里的速度快照，改它对游戏速度毫无作用）
   - ZX.Components.CLife.AddDamage（无敌）
@@ -135,6 +138,15 @@ TABCheats 是一个基于 **TABModLoader + Harmony** 的《They Are Billions》(
 - 存档提示：游戏会把"当前速度"一起存进存档。开着超级速度存档后，即使关掉作弊，读档也会保留该速度（按 `+`/`-` 或选项页倍率即可调回）。
 
 ## 更新日志
+
+### v1.0.4（修复"研究了半天没变快"）
+
+- **根因**：v1.0.3 只压了 `ZXEntityDefaultParams/ZXCommandDefaultParams.get_BuildingTime`，而**研究**走的是
+  `ZX.Commands.Technology.GetExecutionTimeFor()` —— 它自己 override 了时长公式（`round(1.4 × buildingTimeFactor × 50)`），
+  根本不读 `BuildingTime`，所以作坊里那条研究进度条一直按原速走。`Train.GetExecutionTimeFor()` 同理（也是 override）。
+- **改法**：对 `ZX.Commands.ZXCommand / Technology / Train / Repair` 四个 `GetExecutionTimeFor` 都加"封顶"补丁
+  （只压不涨，0 的瞬发命令不动）→ 研究、训练、建造、升级、维修统一走"建造/训练时长(秒)"（默认 1 秒）。
+- 诊断日志新增研究完成事件（`Technology.OnFinish (研究完成)`），方便确认。
 
 ### v1.0.3（修复"开启瞬间建造后建筑刚放下就消失"）
 
